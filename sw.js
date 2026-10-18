@@ -1,5 +1,5 @@
 const CACHE = 'sf-mobile-v2';
-const SHELL = ['./', './index.html', './app.css', './app.js', './seed.js', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png'];
+const SHELL = ['./', './index.html', './app.css', './app.js', './seed.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
