@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0a09">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="拾音">
+<meta name="description" content="拾音手机版：独立运行的免费音乐播放器，自动采集、分类筛选、离线保存，不依赖电脑。">
+<title>拾音 · 把整张互联网当作唱片架</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<svg class="svg-sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8.5 5v14M15.5 5v14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 5.8v12.4L9.4 12z" fill="currentColor"/><path d="M6 5.5v13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 5.8v12.4L14.6 12z" fill="currentColor"/><path d="M18 5.5v13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-9.4A4.1 4.1 0 0 1 12 7.7a4.1 4.1 0 0 1 7.5 2.9C19.5 15.4 12 20 12 20Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-heart-fill" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-9.4A4.1 4.1 0 0 1 12 7.7a4.1 4.1 0 0 1 7.5 2.9C19.5 15.4 12 20 12 20Z" fill="currentColor"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4.5v10M8 11l4 4 4-4M5 19.5h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.8h5V7M7 7l.8 12.2h8.4L17 7M10.4 10.5v5.6M13.6 10.5v5.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><rect x="3.2" y="7.5" width="17.6" height="12.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="16.2" cy="13.8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 7.5V5.2l10-2.7M7 11.5h4M7 15h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="5.4" fill="none" stroke="currentColor" stroke-width=".9" opacity=".6"/><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width=".9" opacity=".35"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6.5h16M7 12h10M10 17.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 13.6 9 19 10.6 13.6 12.2 12 17.7 10.4 12.2 5 10.6 10.4 9zM18 16.5l.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4.5 10V4.5H10M14 4.5h5.5V10M19.5 14v5.5H14M10 19.5H4.5V14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-install" viewBox="0 0 24 24"><rect x="6.5" y="2.8" width="11" height="18.4" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 7v6M9.5 10.5 12 13l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M4 7h3.2c1.2 0 2 .5 2.7 1.6l4.2 6.8c.7 1.1 1.5 1.6 2.7 1.6H20M4 17h3.2c1.2 0 2-.5 2.7-1.6M14.1 8.6c.7-1.1 1.5-1.6 2.7-1.6H20M17.4 4.4 20 7l-2.6 2.6M17.4 14.4 20 17l-2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M4.5 9.5A4.5 4.5 0 0 1 9 5h8M20 5.8 17.4 3.2M19.5 14.5A4.5 4.5 0 0 1 15 19H7M4 18.2l2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="head">
+    <div class="brand">
+      <span class="brand-mark"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".55"/><circle cx="24" cy="24" r="15" fill="none" stroke="currentColor" stroke-width="1" opacity=".35"/><circle cx="24" cy="24" r="8.5" fill="none" stroke="currentColor" stroke-width="1" opacity=".25"/><circle cx="24" cy="24" r="4" fill="currentColor"/></svg></span>
+      <span class="brand-text"><strong>拾音</strong><em>SOUND FORAGE</em></span>
+    </div>
+    <div class="head-actions">
+      <button class="install-btn" id="install-btn" hidden><svg><use href="#i-install"/></svg>安装</button>
+      <button class="icon-btn" id="settings-btn" aria-label="设置"><svg><use href="#i-gear"/></svg></button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <p class="eyebrow"><span class="dot"></span>独立运行 · 无需电脑</p>
+    <h1>把整张互联网<br><em>当作唱片架</em></h1>
+    <p class="hero-sub">自动采集免费音乐，按语言、场景、风格、乐器筛选；版权歌手可试听 30 秒，喜欢的存进手机。</p>
+  </section>
+
+  <div class="stats">
+    <div class="stat"><b id="stat-tracks">0</b><span>曲库</span></div>
+    <div class="stat"><b id="stat-saved">0</b><span>已存</span></div>
+    <div class="stat"><b id="stat-size">0 MB</b><span>占用</span></div>
+  </div>
+
+  <div class="searchbar" id="searchbar">
+    <svg><use href="#i-search"/></svg>
+    <input id="search" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="搜曲名、音乐人，或输入：深夜钢琴 / rainy jazz" aria-label="搜索音乐">
+    <button class="search-clear" id="search-clear" aria-label="清空"><svg><use href="#i-close"/></svg></button>
+  </div>
+  <div class="quick" id="quick">
+    <button data-q="深夜钢琴">深夜钢琴</button>
+    <button data-q="rainy jazz">雨夜爵士</button>
+    <button data-q="日语 city pop">日语 City Pop</button>
+    <button data-q="lo-fi study">Lo-fi 自习</button>
+    <button data-q="萨克斯">萨克斯</button>
+    <button data-q="华语 纯音乐">华语纯音乐</button>
+  </div>
+
+  <div class="active-filters" id="active-filters"></div>
+
+  <section class="board">
+    <header class="board-head">
+      <div class="board-title">
+        <h2 id="board-title">为你采集</h2>
+        <span class="board-count" id="board-count">—</span>
+      </div>
+      <div class="tools">
+        <button class="tool-btn" id="filter-btn" data-act="open-filter"><svg><use href="#i-filter"/></svg>筛选</button>
+        <button class="tool-btn" id="collect-btn" data-act="collect"><svg><use href="#i-spark"/></svg>采集</button>
+      </div>
+    </header>
+    <div class="collect-line" id="collect-line"><span class="pulse"></span><span id="collect-text">正在准备本地曲库…</span></div>
+    <div id="list"></div>
+  </section>
+</div>
+
+<footer class="dock" aria-label="播放器">
+  <div class="dock-progress"><i id="dock-fill"></i></div>
+  <span class="mini-disc" id="mini-disc"><span class="label" id="mini-label">拾</span></span>
+  <button class="dock-meta" data-act="open-player" aria-label="打开播放器">
+    <strong id="np-title">还没有开始播放</strong>
+    <em id="np-artist">从下面挑一首，或点「采集」</em>
+  </button>
+  <div class="dock-ctrl">
+    <button class="icon-btn" data-act="prev" aria-label="上一首"><svg><use href="#i-prev"/></svg></button>
+    <button class="play-btn" data-act="toggle" aria-label="播放/暂停"><svg id="play-icon"><use href="#i-play"/></svg></button>
+    <button class="icon-btn" data-act="next" aria-label="下一首"><svg><use href="#i-next"/></svg></button>
+    <button class="icon-btn" data-act="open-player" aria-label="展开"><svg><use href="#i-expand"/></svg></button>
+  </div>
+</footer>
+
+<nav class="tabbar" aria-label="导航">
+  <button class="tab is-on" data-view="discover"><svg><use href="#i-disc"/></svg><span>发现</span></button>
+  <button class="tab" data-view="radio"><svg><use href="#i-radio"/></svg><span>电台</span></button>
+  <button class="tab" data-view="favorites"><svg><use href="#i-heart"/></svg><span>收藏</span></button>
+  <button class="tab" data-view="saved"><svg><use href="#i-down"/></svg><span>已存</span></button>
+</nav>
+
+<div class="scrim" id="scrim" data-act="close-sheets"></div>
+
+<section class="sheet" id="player-sheet" aria-label="正在播放" aria-hidden="true">
+  <div class="sheet-handle" data-act="close-sheets"><span></span></div>
+  <button class="icon-btn sheet-close" data-act="close-sheets" aria-label="收起"><svg><use href="#i-chev"/></svg></button>
+  <div class="disc-wrap">
+    <div class="disc" id="disc"><span class="disc-label" id="disc-label">拾</span><span class="disc-hole"></span></div>
+  </div>
+  <div class="sheet-info">
+    <p class="sheet-kicker" id="sheet-kicker">READY</p>
+    <h3 id="sheet-title">还没有开始播放</h3>
+    <p id="sheet-artist">挑一首喜欢的，让它转起来</p>
+  </div>
+  <div class="sheet-progress">
+    <span id="sheet-cur">0:00</span>
+    <input id="sheet-range" type="range" min="0" max="1000" value="0" step="1" aria-label="播放进度">
+    <span id="sheet-dur">0:00</span>
+  </div>
+  <div class="sheet-controls">
+    <button class="icon-btn" data-act="shuffle" aria-label="随机"><svg><use href="#i-shuffle"/></svg></button>
+    <button class="icon-btn big" data-act="prev" aria-label="上一首"><svg><use href="#i-prev"/></svg></button>
+    <button class="play-btn xl" data-act="toggle" aria-label="播放/暂停"><svg id="sheet-play-icon"><use href="#i-play"/></svg></button>
+    <button class="icon-btn big" data-act="next" aria-label="下一首"><svg><use href="#i-next"/></svg></button>
+    <button class="icon-btn" data-act="repeat" aria-label="循环"><svg><use href="#i-repeat"/></svg></button>
+  </div>
+  <div class="sheet-actions">
+    <button class="btn btn-ghost" data-act="fav-current"><svg><use href="#i-heart"/></svg><span id="sheet-fav">收藏</span></button>
+    <button class="btn btn-solid" data-act="save-current"><svg><use href="#i-down"/></svg><span id="sheet-save">存到手机</span></button>
+  </div>
+  <p class="sheet-license" id="sheet-license"></p>
+</section>
+
+<section class="sheet" id="filter-sheet" aria-label="筛选" aria-hidden="true">
+  <div class="sheet-handle" data-act="close-sheets"><span></span></div>
+  <div class="sheet-title"><h3>筛选</h3><button data-act="clear-filters">清空</button></div>
+  <div id="filter-groups"></div>
+  <div class="sheet-actions-row"><button class="btn btn-solid" data-act="close-sheets">完成</button></div>
+</section>
+
+<section class="sheet" id="settings-sheet" aria-label="设置" aria-hidden="true">
+  <div class="sheet-handle" data-act="close-sheets"><span></span></div>
+  <div class="sheet-title"><h3>设置</h3><button data-act="close-sheets">关闭</button></div>
+  <div class="settings-row">
+    <div><strong>自动采集</strong><small>打开应用时自动补充新曲目（需联网）</small></div>
+    <button class="switch" id="auto-switch" role="switch" aria-checked="true" aria-label="自动采集"><i></i></button>
+  </div>
+  <div class="settings-row">
+    <div><strong>离线存储</strong><small id="storage-text">已存 0 首 · 0 MB</small></div>
+    <button class="btn btn-ghost" id="persist-btn">申请持久存储</button>
+  </div>
+  <div class="settings-row">
+    <div><strong>清空离线音频</strong><small>只删已下载的文件，保留曲库与收藏</small></div>
+    <button class="btn btn-ghost danger" id="clear-saved">清空</button>
+  </div>
+  <div class="settings-row" id="install-row">
+    <div><strong>安装到桌面</strong><small id="install-hint">添加到主屏幕后，像 App 一样全屏运行</small></div>
+    <button class="btn btn-ghost" id="install-btn-2">安装</button>
+  </div>
+  <div class="settings-row">
+    <div><strong>版本与更新</strong><small id="version-text">v1.0.1 · 无需账号</small></div>
+    <button class="btn btn-ghost" id="check-update">检查更新</button>
+  </div>
+  <div class="settings-row">
+    <div><strong>无需登录</strong><small>没有账号密码，打开即用。如果出现密码框，是 Wi-Fi 网页认证或托管平台开了访问保护，不是拾音。</small></div>
+    <span class="board-count">免密</span>
+  </div>
+  <div class="settings-row">
+    <div><strong>关于</strong><small id="about-text">拾音手机版 v1.0 · 纯静态、无账号、不上传数据</small></div>
+    <span class="board-count">PWA</span>
+  </div>
+  <p class="settings-note">免费/独立音乐来自 Audius 与 Radio Browser，可离线保存；版权歌曲只提供 Apple Music 官方 30 秒试听，不可下载。单文件本地打开时受浏览器限制，版权试听不可用；托管成 PWA 后可用。版权归各音乐人所有，所有收藏与下载只存在这台手机。</p>
+</section>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<audio id="audio" preload="metadata"></audio>
+<script src="seed.js"></script>
+<script src="app.js" defer></script>
+</body>
+</html>
