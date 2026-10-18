@@ -99,6 +99,13 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .install-btn svg { width: 13px; height: 13px; }
 .install-btn[hidden] { display: none; }
+#install-row { cursor: pointer; }
+.install-help { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; justify-content: center; padding: 18px; background: rgba(8, 7, 6, .74); backdrop-filter: blur(8px); }
+.install-help-card { width: 100%; max-width: 420px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 18px; padding: 22px 20px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 24px 60px rgba(0,0,0,.55); }
+.install-help-kicker { font-family: var(--font-mono); font-size: 9px; letter-spacing: .2em; color: var(--copper); text-transform: uppercase; }
+.install-help-card h3 { margin: 10px 0 8px; font-family: var(--font-display); font-size: 22px; font-weight: 600; color: var(--text); }
+.install-help-card p { margin: 0 0 18px; font-size: 12.5px; line-height: 1.8; color: var(--muted); }
+.install-help-card .btn { width: 100%; }
 
 /* Hero */
 .hero { padding: 22px 18px 0; }

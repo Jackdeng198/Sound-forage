@@ -10,6 +10,14 @@
 <meta name="apple-mobile-web-app-title" content="拾音">
 <meta name="description" content="拾音手机版：独立运行的免费音乐播放器，自动采集、分类筛选、离线保存，不依赖电脑。">
 <title>拾音 · 把整张互联网当作唱片架</title>
+<script>
+window.__sfInstallEvent = null;
+window.addEventListener('beforeinstallprompt', function (e) {
+  e.preventDefault();
+  window.__sfInstallEvent = e;
+  window.dispatchEvent(new Event('sf-installable'));
+});
+</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">

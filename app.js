@@ -1069,6 +1069,11 @@
 
   /* ------------------------------ 安装 / 存储 ------------------------------ */
   function setupInstall() {
+    S.installEvent = window.__sfInstallEvent || null;
+    window.addEventListener('sf-installable', () => {
+      S.installEvent = window.__sfInstallEvent || null;
+      renderInstall();
+    });
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       S.installEvent = e;
@@ -1079,6 +1084,7 @@
       toast('已安装到桌面');
       renderInstall();
     });
+    if ('serviceWorker' in navigator) navigator.serviceWorker.ready.then(() => renderInstall()).catch(() => {});
     renderInstall();
   }
   function renderInstall() {
@@ -1088,7 +1094,9 @@
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
     const btn = $('#install-btn');
     if (!btn) return;
-    btn.hidden = standalone || (!canPrompt && !ios);
+    btn.hidden = standalone || isFile;
+    const row = $('#install-row');
+    if (row) row.style.display = standalone ? 'none' : '';
     $('#install-btn-2').textContent = canPrompt ? '安装' : '方法';
     $('#install-hint').textContent = standalone
       ? '已安装 · 正在以独立应用运行'
@@ -1102,15 +1110,51 @@
   }
   async function install() {
     if (S.installEvent) {
-      S.installEvent.prompt();
-      const choice = await S.installEvent.userChoice;
-      if (choice && choice.outcome === 'accepted') toast('正在安装…');
-      S.installEvent = null;
-      renderInstall();
-      return;
+      try {
+        S.installEvent.prompt();
+        const choice = await Promise.race([
+          S.installEvent.userChoice.catch(() => null),
+          new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]);
+        if (!choice) {
+          S.installEvent = null;
+          renderInstall();
+          showInstallHelp();
+          return;
+        }
+        if (choice.outcome === 'accepted') toast('正在安装…');
+        S.installEvent = null;
+        renderInstall();
+        return;
+      } catch (err) {
+        S.installEvent = null;
+      }
     }
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    toast(ios ? 'Safari：分享 → 添加到主屏幕' : 'Chrome：菜单 → 安装应用', 'warn');
+    showInstallHelp();
+  }
+  function showInstallHelp() {
+    const old = document.getElementById('install-help');
+    if (old) old.remove();
+    const ua = navigator.userAgent;
+    const inApp = /MicroMessenger|QQ\/|Weibo|DingTalk|AlipayClient|Lark|GitHub/i.test(ua);
+    const ios = /iphone|ipad|ipod/i.test(ua);
+    const title = inApp ? '请在浏览器中打开' : ios ? '用 Safari 添加' : '用 Chrome 安装';
+    const body = inApp
+      ? '当前是内置浏览器（微信/QQ/App 内），不能直接安装。点右上角 … → 在浏览器打开，再用 Chrome 打开本页。'
+      : ios
+        ? 'Safari：点底部分享按钮 → 添加到主屏幕。'
+        : 'Chrome：点右上角 ⋮ → 安装应用；没有这一项就选“添加到主屏幕”。首次打开请先刷新一次，等页面完全加载。';
+    const wrap = document.createElement('div');
+    wrap.id = 'install-help';
+    wrap.className = 'install-help';
+    wrap.innerHTML = '<div class="install-help-card" role="dialog" aria-modal="true">' +
+      '<span class="install-help-kicker">安装到桌面</span>' +
+      '<h3>' + title + '</h3><p>' + body + '</p>' +
+      '<button class="btn btn-solid" data-close>知道了</button></div>';
+    document.body.appendChild(wrap);
+    wrap.addEventListener('click', (e) => {
+      if (e.target === wrap || e.target.closest('[data-close]')) wrap.remove();
+    });
   }
   async function clearSaved() {
     if (!confirm('清空所有离线音频？曲库和收藏会保留。')) return;
@@ -1208,6 +1252,8 @@
     $('#settings-btn').addEventListener('click', () => openSheet('settings-sheet'));
     $('#install-btn').addEventListener('click', install);
     $('#install-btn-2').addEventListener('click', install);
+    const installRow = $('#install-row');
+    if (installRow) installRow.addEventListener('click', (e) => { if (e.target.closest('button')) return; install(); });
     $('#persist-btn').addEventListener('click', requestPersist);
     $('#check-update').addEventListener('click', () => checkForUpdates(true));
     $('#clear-saved').addEventListener('click', clearSaved);
