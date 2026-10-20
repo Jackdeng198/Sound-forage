@@ -106,6 +106,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .install-help-card h3 { margin: 10px 0 8px; font-family: var(--font-display); font-size: 22px; font-weight: 600; color: var(--text); }
 .install-help-card p { margin: 0 0 18px; font-size: 12.5px; line-height: 1.8; color: var(--muted); }
 .install-help-card .btn { width: 100%; }
+.settings-warn { margin: -2px 0 8px; padding: 8px 14px; color: var(--copper-2); font-size: 10px; line-height: 1.7; }
+.settings-warn[hidden] { display: none; }
 
 /* Hero */
 .hero { padding: 22px 18px 0; }
@@ -214,6 +216,13 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .storage .bar { flex: 1; height: 3px; background: rgba(236,229,216,.1); border-radius: 2px; overflow: hidden; max-width: 120px; }
 .storage .bar i { display: block; height: 100%; background: var(--copper); }
 .saved-row { display: grid; grid-template-columns: 44px minmax(0,1fr) auto auto; gap: 11px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); animation: rise .4s var(--ease) both; }
+.local-tools { padding: 16px 18px 4px; }
+.local-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.local-tools p { margin: 9px 0 0; font-size: 10px; line-height: 1.75; color: var(--faint); }
+.local-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; letter-spacing: .04em; }
+.local-bar button { background: none; border: 0; color: var(--copper); font: inherit; cursor: pointer; }
+.local-row .track-main p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-row .size { font-size: 9.5px; color: var(--faint); }
 .saved-row .size { font-family: var(--font-mono); font-size: 9px; color: var(--faint); }
 .saved-row .actions { display: flex; }
 
@@ -247,7 +256,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 42;
   height: calc(var(--tab-h) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
   max-width: var(--app-w); margin: 0 auto;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: rgba(10,9,8,.97); border-top: 1px solid var(--line); backdrop-filter: blur(14px);
 }
 .tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--faint); font-size: 9px; letter-spacing: .06em; }

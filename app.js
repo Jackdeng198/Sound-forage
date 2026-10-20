@@ -254,6 +254,8 @@
     limit: 80,
     favorites: new Set(),
     saved: new Map(),
+    local: new Map(),
+    localList: [],
     downloads: new Map(),
     blobUrls: new Map(),
     current: null,
@@ -264,6 +266,9 @@
     req: 0,
     collection: { running: false, last: null, cursor: 0, auto: true },
     installEvent: null,
+    persisted: false,
+    estimate: null,
+    warnedPersist: false,
   };
   const audio = $('#audio');
   let seeking = false;
@@ -286,6 +291,7 @@
       await openDB();
       await seedIfNeeded();
       await loadState();
+      await initStorage();
     } catch (err) {
       $('#list').innerHTML = emptyState('无法打开本地曲库', '浏览器可能禁用了存储（隐私模式）。请用普通模式打开。');
       return;
@@ -455,6 +461,7 @@
     if (!t) return '';
     if (t.kind === 'station') return t.streamUrl || '';
     if (t.source === 'audius') return t.sid ? AUDIUS + '/v1/tracks/' + encodeURIComponent(t.sid) + '/stream?app_name=SoundForageMobile' : '';
+    if (t.source === 'local') return t.objectUrl || '';
     return t.streamUrl || '';
   };
   const titleKey = (t) => (t.title + '|' + t.artist).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -649,26 +656,63 @@
     renderCollection();
     if (S.view === 'discover' || S.view === 'favorites') renderTrackList();
     else if (S.view === 'radio') renderRadioList();
+    else if (S.view === 'local') renderLocalList();
     else renderSavedList();
     updateDock();
     renderInstall();
   }
 
+  function storageMode() {
+    if (location.protocol === 'file:') return '本地文件';
+    if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true) return '已安装';
+    if (/MicroMessenger|QQ\/|Weibo|DingTalk|AlipayClient|Lark|GitHub/i.test(navigator.userAgent)) return '内置浏览器';
+    return '浏览器';
+  }
+  async function initStorage() {
+    try {
+      if (navigator.storage && navigator.storage.persist) S.persisted = await navigator.storage.persist();
+    } catch (e) { /* ignore */ }
+    try {
+      if (navigator.storage && navigator.storage.estimate) S.estimate = await navigator.storage.estimate();
+    } catch (e) { /* ignore */ }
+    renderStorageInfo();
+  }
+  function renderStorageInfo() {
+    const mode = storageMode();
+    const origin = location.protocol === 'file:' ? 'file://（本地文件）' : location.origin;
+    const el = document.getElementById('storage-origin');
+    if (el) el.textContent = origin + ' · ' + mode;
+    const note = document.getElementById('storage-warn');
+    if (!note) return;
+    if (mode === '本地文件') {
+      note.textContent = '本地文件模式：下载可能不会被浏览器保留。请用托管版并安装到桌面。';
+      note.hidden = false;
+    } else if (mode === '内置浏览器') {
+      note.textContent = '当前是内置浏览器，下载可能被清理。请点右上角 … 在 Chrome 中打开，并安装到桌面。';
+      note.hidden = false;
+    } else if (!S.persisted) {
+      note.textContent = '浏览器未授予持久存储；空间不足时系统可能清理下载。建议安装到桌面。';
+      note.hidden = false;
+    } else {
+      note.hidden = true;
+    }
+  }
   function renderStats() {
     $('#stat-tracks').textContent = S.tracks.length;
     $('#stat-saved').textContent = S.saved.size;
     let bytes = 0;
     for (const x of S.saved.values()) bytes += x.size || 0;
     $('#stat-size').textContent = fmtBytes(bytes);
-    $('#storage-text').textContent = '已存 ' + S.saved.size + ' 首 · ' + fmtBytes(bytes);
+    $('#storage-text').textContent = '已存 ' + S.saved.size + ' 首 · ' + fmtBytes(bytes) + ' · ' + (S.persisted ? '持久存储已开启' : '持久存储未开启');
+    renderStorageInfo();
   }
 
   function renderNav() {
     $$('.tab').forEach((el) => el.classList.toggle('is-on', el.dataset.view === S.view));
-    const titles = { discover: '为你采集', radio: '世界电台', favorites: '我的收藏', saved: '本地已存' };
+    const titles = { discover: '为你采集', radio: '世界电台', local: '手机本地', favorites: '我的收藏', saved: '本地已存' };
     $('#board-title').textContent = titles[S.view] || '为你采集';
     $('#collect-btn').hidden = S.view !== 'discover';
-    $('#filter-btn').hidden = S.view === 'saved';
+    $('#filter-btn').hidden = S.view === 'saved' || S.view === 'local';
   }
 
   function renderCollection() {
@@ -679,6 +723,7 @@
     else if (S.loading) text.innerHTML = '正在检索…';
     else if (S.view === 'radio') text.innerHTML = '直播流 · 来自 Radio Browser / SomaFM';
     else if (S.view === 'saved') text.innerHTML = '已存曲目断网也能播放';
+    else if (S.view === 'local') text.innerHTML = '手机本地 · 支持多选与文件夹（含子文件夹）';
     else if (S.view === 'favorites') text.innerHTML = '收藏只存在这台手机';
     else text.innerHTML = '曲库 <b>' + S.tracks.length + '</b> 首 · 上次采集 ' + rel(S.collection.last) + ' · 打开应用自动补货';
   }
@@ -743,8 +788,155 @@
       '<span class="track-main"><h3>' + esc(t.title) + '</h3><p><b>' + esc(t.artist) + '</b> · 已离线</p></span>' +
       '<span class="size">' + fmtBytes(entry.size) + '</span>' +
       '<span class="actions"><button class="icon-btn" data-act="play-saved" aria-label="播放"><svg><use href="#i-play"/></svg></button>' +
+      '<button class="icon-btn" data-act="export-saved" aria-label="导出到手机下载目录"><svg><use href="#i-down"/></svg></button>' +
       '<button class="icon-btn" data-act="delete-saved" aria-label="删除"><svg><use href="#i-trash"/></svg></button></span>' +
     '</div>';
+  }
+
+  const LOCAL_AUDIO_RE = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm|weba|mp4|m4b|aiff|aif|wma)$/i;
+  function hashStr(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+  function makeLocalTrack(file) {
+    const path = file.webkitRelativePath || file.name;
+    const raw = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ').trim();
+    let artist = '本地文件';
+    let title = raw || file.name;
+    const parts = raw.split(/\s+-\s+/);
+    if (parts.length >= 2) {
+      artist = parts[0].trim();
+      title = parts.slice(1).join(' - ').trim();
+    } else {
+      const segs = path.split('/').filter(Boolean);
+      if (segs.length >= 3) artist = segs[segs.length - 3];
+      else if (segs.length === 2) artist = segs[0];
+    }
+    const uid = 'local:' + hashStr(path + '|' + file.size + '|' + file.lastModified);
+    const objectUrl = URL.createObjectURL(file);
+    return {
+      uid, sid: uid, source: 'local', kind: 'track', title, artist,
+      album: path.split('/').slice(0, -1).join('/'), duration: 0, artwork: '', genre: '本地文件',
+      tags: ['本地'], canSave: true, file, objectUrl, size: file.size, path,
+      hue: hueOf({ title, artist }), addedAt: new Date().toISOString(),
+    };
+  }
+  function addLocalFiles(list) {
+    const files = [...list].filter((f) => {
+      if (!f || !f.name) return false;
+      const p = f.webkitRelativePath || f.name;
+      if (/(^|\/)(\._|\.DS_Store|__MACOSX|\.Trash|\.Trashes)(\/|$)/.test(p)) return false;
+      return (f.type && f.type.startsWith('audio/')) || LOCAL_AUDIO_RE.test(f.name);
+    });
+    if (!files.length) { toast('没有找到支持的音频文件', 'warn'); return; }
+    let added = 0;
+    for (const f of files) {
+      const t = makeLocalTrack(f);
+      if (S.local.has(t.uid)) { URL.revokeObjectURL(t.objectUrl); continue; }
+      S.local.set(t.uid, t);
+      S.localList.push(t);
+      added++;
+    }
+    S.localList.sort((a, b) => String(a.path).localeCompare(String(b.path), 'zh-Hans-CN'));
+    if (S.view !== 'local') setView('local'); else renderLocalList();
+    toast('已加入 ' + added + ' 首本地音乐', added ? 'ok' : 'warn');
+  }
+  async function walkDir(dir, prefix, out) {
+    for await (const entry of dir.values()) {
+      if (entry.kind === 'file') {
+        try {
+          const f = await entry.getFile();
+          try { Object.defineProperty(f, 'webkitRelativePath', { value: prefix + entry.name }); } catch (e) { /* ignore */ }
+          out.push(f);
+        } catch (e) { /* skip unreadable */ }
+      } else if (entry.kind === 'directory') {
+        await walkDir(entry, prefix + entry.name + '/', out);
+      }
+    }
+  }
+  async function pickFolder() {
+    if (window.showDirectoryPicker) {
+      try {
+        const dir = await window.showDirectoryPicker();
+        const files = [];
+        await walkDir(dir, dir.name + '/', files);
+        if (!files.length) { toast('这个文件夹里没有音频文件', 'warn'); return; }
+        addLocalFiles(files);
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+        // 权限/浏览器不支持时回退到 webkitdirectory
+      }
+    }
+    const input = $('#local-dir-input');
+    if (input) input.click();
+    else toast('当前浏览器不支持选择文件夹，请用「选择文件」多选', 'warn');
+  }
+  function localRow(t, i) {
+    const saved = S.saved.has(t.uid);
+    return '<div class="saved-row local-row" data-uid="' + esc(t.uid) + '" data-act="play-local" style="--i:' + Math.min(i, 12) + '">' +
+      '<span class="cover" style="--h:' + hueOf(t) + '">' + esc(initialOf(t)) + '</span>' +
+      '<span class="track-main"><h3>' + esc(t.title) + '</h3><p><b>' + esc(t.artist) + '</b> · ' + esc(t.path || '本地文件') + '</p></span>' +
+      '<span class="size">' + fmtBytes(t.size || 0) + '</span>' +
+      '<span class="actions">' +
+        '<button class="icon-btn" data-act="play-local" aria-label="播放"><svg><use href="#i-play"/></svg></button>' +
+        '<button class="icon-btn' + (saved ? ' is-saved' : '') + '" data-act="save-local" aria-label="保存到已存" ' + (saved ? 'disabled' : '') + '><svg><use href="#' + (saved ? 'i-check' : 'i-down') + '"/></svg></button>' +
+        '<button class="icon-btn" data-act="remove-local" aria-label="移除"><svg><use href="#i-trash"/></svg></button>' +
+      '</span></div>';
+  }
+  function renderLocalList() {
+    renderCollection();
+    const wrap = $('#list');
+    const supportsDir = !!window.showDirectoryPicker || (!/iphone|ipad|ipod/i.test(navigator.userAgent) && ('webkitdirectory' in document.createElement('input')));
+    let bytes = 0;
+    for (const t of S.localList) bytes += t.size || 0;
+    $('#board-count').textContent = S.localList.length + ' 首' + (S.localList.length ? ' · ' + fmtBytes(bytes) : '');
+    let html = '<div class="local-tools"><div class="local-actions">' +
+      '<button class="btn btn-solid" data-act="pick-files">选择文件</button>' +
+      (supportsDir ? '<button class="btn btn-ghost" data-act="pick-dir">选择文件夹</button>' : '') +
+      '</div><p>支持多选；选择文件夹会包含所有子文件夹里的音频。本地文件只在本次打开有效，点每首的 ↓ 可保存到「已存」，重开也能听。</p></div>';
+    if (S.localList.length) {
+      html += '<div class="local-bar"><span>' + S.localList.length + ' 首 · ' + fmtBytes(bytes) + '</span><button data-act="play-all-local">全部播放</button></div>';
+      html += S.localList.map(localRow).join('');
+    } else {
+      html += emptyState('还没有本地文件', '点「选择文件」可以多选；点「选择文件夹」会自动扫描该文件夹及所有子文件夹里的音乐。');
+    }
+    wrap.innerHTML = html;
+  }
+  function playLocal(uid) {
+    const t = S.local.get(uid);
+    if (!t) return;
+    if (S.current && S.current.uid === t.uid) { toggle(); return; }
+    playTrack(t, S.localList);
+  }
+  async function saveLocal(uid) {
+    const t = S.local.get(uid);
+    if (!t) return;
+    if (S.saved.has(uid)) { toast('已经在「已存」里了'); return; }
+    if (!t.file) { toast('文件不可用，请重新选择', 'warn'); return; }
+    try {
+      const mime = t.file.type || 'audio/mpeg';
+      await putOne('blobs', { uid: uid, blob: t.file, mime: mime, size: t.file.size });
+      const entry = { uid: uid, size: t.file.size, mime: mime, savedAt: new Date().toISOString(), track: stripTrack(t) };
+      await putOne('saved', entry);
+      S.saved.set(uid, entry);
+      toast('已保存到「已存」 · 重开也能听');
+      renderStats();
+      if (S.view === 'local') renderLocalList();
+      else if (S.view === 'saved') renderSavedList();
+    } catch (e) { toast('保存失败：' + e.message, 'err'); }
+  }
+  function removeLocal(uid) {
+    const t = S.local.get(uid);
+    if (!t) return;
+    if (S.current && S.current.uid === uid) {
+      try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (e) { /* ignore */ }
+      S.current = null; S.queue = []; S.qi = -1;
+      $('#np-title').textContent = '还没有开始播放';
+      $('#np-artist').textContent = '从下面挑一首，或按「采集」';
+    }
+    if (t.objectUrl) URL.revokeObjectURL(t.objectUrl);
+    S.local.delete(uid);
+    S.localList = S.localList.filter((x) => x.uid !== uid);
+    renderLocalList();
+    renderStats();
   }
 
   function renderTrackList() {
@@ -783,7 +975,8 @@
     for (const x of entries) bytes += x.size || 0;
     $('#board-count').textContent = entries.length + ' 首 · ' + fmtBytes(bytes);
     let html = '<div class="saved-head"><div class="storage"><div><b>' + fmtBytes(bytes) + '</b><span>离线占用</span></div><div class="bar"><i style="width:' + Math.min(100, (bytes / (1024 * 1024 * 1024)) * 100) + '%"></i></div></div></div>';
-    html += entries.length ? entries.map(savedRow).join('') : emptyState('还没有离线曲目', '在发现页点曲目右侧的 ↓，下载后断网也能听。');
+    const where = location.protocol === 'file:' ? 'file://（本地文件）' : location.origin;
+    html += entries.length ? entries.map(savedRow).join('') : emptyState('还没有离线曲目', '在发现页点曲目右侧的 ↓。下载保存在当前网址（' + where + '）；换网址、换浏览器或清理浏览器数据后会看不到。');
     wrap.innerHTML = html;
   }
 
@@ -824,10 +1017,11 @@
     $('#sheet-play-icon use').setAttribute('href', playing ? '#i-pause' : '#i-play');
     $('#sheet-title').textContent = t.title;
     $('#sheet-artist').textContent = t.kind === 'station' ? (t.country || '直播电台') : t.artist;
-    $('#sheet-kicker').textContent = S.saved.has(t.uid) ? 'OFFLINE · 已离线' : t.kind === 'station' ? 'LIVE RADIO' : t.preview ? 'APPLE MUSIC · 30 秒试听' : 'AUDIUS';
+    $('#sheet-kicker').textContent = S.saved.has(t.uid) ? 'OFFLINE · 已离线' : t.kind === 'station' ? 'LIVE RADIO' : t.source === 'local' ? 'LOCAL · 手机文件' : t.preview ? 'APPLE MUSIC · 30 秒试听' : 'AUDIUS';
     const fav = S.favorites.has(t.uid);
     $('#sheet-fav').textContent = fav ? '已收藏' : '收藏';
     const saved = S.saved.has(t.uid);
+    const canSave = t.canSave !== false;
     const dl = S.downloads.get(t.uid);
     $('#sheet-save').textContent = saved ? '已在手机' : !canSave ? (t.preview ? '试听不可下载' : '不可保存') : dl ? (dl.total ? Math.round((dl.bytes / dl.total) * 100) + '%' : '缓存中') : '存到手机';
     $('#sheet-save').disabled = saved || !canSave || t.kind === 'station';
@@ -835,7 +1029,9 @@
       ? 'Apple Music 官方 30 秒试听 · <a href="' + esc(t.link) + '" target="_blank" rel="noopener">去 Apple Music 听完整版</a>'
       : t.kind === 'station'
         ? '直播流 · 版权归电台所有'
-        : (saved ? '离线缓存仅供个人收听' : '来自 Audius 的公开免费曲目 · 版权归音乐人');
+        : t.source === 'local'
+          ? (saved ? '已保存到「已存」 · 只在这台手机' : '手机本地文件 · 只在本次打开有效')
+          : (saved ? '离线缓存仅供个人收听' : '来自 Audius 的公开免费曲目 · 版权归音乐人');
     $$('.station').forEach((el) => {
       const on = !!S.current && el.dataset.uid === S.current.uid;
       const use = el.querySelector('.station-play use');
@@ -862,6 +1058,7 @@
     if (view === 'discover') loadDiscover(true);
     else if (view === 'radio') loadRadio();
     else if (view === 'favorites') { S.items = favTracks(); render(); }
+    else if (view === 'local') { renderLocalList(); }
     else render();
     const hash = view === 'discover' ? '' : '#' + view;
     try { if (location.hash !== hash) history.replaceState(null, '', hash || location.pathname); } catch (e) {}
@@ -988,8 +1185,14 @@
         S.tracks.push(own);
       }
       S.saved.set(uid, entry);
-      try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+      try { if (navigator.storage && navigator.storage.persist) S.persisted = await navigator.storage.persist(); } catch (e) {}
       toast('已存到手机 · ' + fmtBytes(bytes));
+      if (!S.persisted && !S.warnedPersist) {
+        S.warnedPersist = true;
+        const mode = storageMode();
+        const msg = mode === '本地文件' ? '本地文件模式不保证保存；请用托管版并安装到桌面' : mode === '内置浏览器' ? '内置浏览器可能清理下载；请用 Chrome 打开并安装到桌面' : '浏览器未授予持久存储；建议安装到桌面，下载更不容易被清理';
+        setTimeout(() => toast(msg, 'warn'), 1500);
+      }
     } catch (err) {
       toast('保存失败：' + err.message, 'err');
     } finally {
@@ -1035,6 +1238,26 @@
     if (S.view === 'favorites') { S.items = favTracks(); renderTrackList(); }
     else if (S.view === 'discover') renderTrackList();
     updateDock();
+  }
+  async function exportSaved(uid) {
+    const entry = S.saved.get(uid);
+    if (!entry) return;
+    let rec = null;
+    try { rec = await getOne('blobs', uid); } catch (e) { /* ignore */ }
+    if (!rec || !rec.blob) { toast('音频文件不完整，请重新下载', 'err'); return; }
+    const t = entry.track || {};
+    const mime = rec.mime || '';
+    const ext = /mpeg|mp3/i.test(mime) ? '.mp3' : /mp4|m4a|aac/i.test(mime) ? '.m4a' : /ogg/i.test(mime) ? '.ogg' : /wav/i.test(mime) ? '.wav' : '.audio';
+    const name = ((t.artist ? t.artist + ' - ' : '') + (t.title || 'track')).replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+    const url = URL.createObjectURL(rec.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name + ext;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast('已导出到手机的下载目录');
   }
   async function deleteSaved(uid) {
     if (!confirm('从手机删除这首离线曲目？')) return;
@@ -1170,6 +1393,8 @@
   async function requestPersist() {
     try {
       const ok = await navigator.storage.persist();
+      S.persisted = ok;
+      renderStats();
       toast(ok ? '已获得持久存储，系统不会自动清理' : '浏览器暂未授予持久存储', ok ? 'ok' : 'warn');
     } catch (e) { toast('当前浏览器不支持', 'warn'); }
   }
@@ -1229,7 +1454,14 @@
           }
           break;
         }
+        case 'export-saved': exportSaved(uid); break;
         case 'delete-saved': deleteSaved(uid); break;
+        case 'pick-files': $('#local-file-input').click(); break;
+        case 'pick-dir': pickFolder(); break;
+        case 'play-local': if (uid) playLocal(uid); break;
+        case 'save-local': if (uid) saveLocal(uid); break;
+        case 'remove-local': if (uid) removeLocal(uid); break;
+        case 'play-all-local': if (S.localList.length) playTrack(S.localList[0], S.localList); break;
         case 'toggle': toggle(); break;
         case 'next': next(false); break;
         case 'prev': prev(); break;
@@ -1255,6 +1487,8 @@
     const installRow = $('#install-row');
     if (installRow) installRow.addEventListener('click', (e) => { if (e.target.closest('button')) return; install(); });
     $('#persist-btn').addEventListener('click', requestPersist);
+    $('#local-file-input').addEventListener('change', (e) => { addLocalFiles(e.target.files); e.target.value = ''; });
+    $('#local-dir-input').addEventListener('change', (e) => { addLocalFiles(e.target.files); e.target.value = ''; });
     $('#check-update').addEventListener('click', () => checkForUpdates(true));
     $('#clear-saved').addEventListener('click', clearSaved);
     $('#auto-switch').addEventListener('click', async () => {
@@ -1329,7 +1563,7 @@
 
   boot().then(() => {
     const hash = (location.hash || '').replace('#', '');
-    if (['radio', 'favorites', 'saved'].includes(hash)) setView(hash);
+    if (['radio', 'favorites', 'saved', 'local'].includes(hash)) setView(hash);
     updateSearchUI();
     renderInstall();
     setInterval(() => { if (!S.collection.running && S.view === 'discover') renderCollection(); }, 60000);

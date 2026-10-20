@@ -19,8 +19,8 @@ window.addEventListener('beforeinstallprompt', function (e) {
 });
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600;900&display=swap" rel="stylesheet">
@@ -36,7 +36,8 @@ window.addEventListener('beforeinstallprompt', function (e) {
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
   <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-9.4A4.1 4.1 0 0 1 12 7.7a4.1 4.1 0 0 1 7.5 2.9C19.5 15.4 12 20 12 20Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-heart-fill" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-9.4A4.1 4.1 0 0 1 12 7.7a4.1 4.1 0 0 1 7.5 2.9C19.5 15.4 12 20 12 20Z" fill="currentColor"/></symbol>
-  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4.5v10M8 11l4 4 4-4M5 19.5h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.2a2 2 0 0 1 2-2h4.1l1.8 2h7.1a2 2 0 0 1 2 2v7.6a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2V7.2Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+ <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4.5v10M8 11l4 4 4-4M5 19.5h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.8h5V7M7 7l.8 12.2h8.4L17 7M10.4 10.5v5.6M13.6 10.5v5.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-radio" viewBox="0 0 24 24"><rect x="3.2" y="7.5" width="17.6" height="12.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="16.2" cy="13.8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 7.5V5.2l10-2.7M7 11.5h4M7 15h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
   <symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="5.4" fill="none" stroke="currentColor" stroke-width=".9" opacity=".6"/><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width=".9" opacity=".35"/></symbol>
@@ -126,6 +127,7 @@ window.addEventListener('beforeinstallprompt', function (e) {
 <nav class="tabbar" aria-label="导航">
   <button class="tab is-on" data-view="discover"><svg><use href="#i-disc"/></svg><span>发现</span></button>
   <button class="tab" data-view="radio"><svg><use href="#i-radio"/></svg><span>电台</span></button>
+  <button class="tab" data-view="local"><svg><use href="#i-folder"/></svg><span>本地</span></button>
   <button class="tab" data-view="favorites"><svg><use href="#i-heart"/></svg><span>收藏</span></button>
   <button class="tab" data-view="saved"><svg><use href="#i-down"/></svg><span>已存</span></button>
 </nav>
@@ -181,6 +183,11 @@ window.addEventListener('beforeinstallprompt', function (e) {
     <button class="btn btn-ghost" id="persist-btn">申请持久存储</button>
   </div>
   <div class="settings-row">
+    <div><strong>下载保存在</strong><small id="storage-origin">正在检查…</small></div>
+    <span class="board-count">本机</span>
+  </div>
+  <p class="settings-warn" id="storage-warn" hidden></p>
+  <div class="settings-row">
     <div><strong>清空离线音频</strong><small>只删已下载的文件，保留曲库与收藏</small></div>
     <button class="btn btn-ghost danger" id="clear-saved">清空</button>
   </div>
@@ -200,10 +207,12 @@ window.addEventListener('beforeinstallprompt', function (e) {
     <div><strong>关于</strong><small id="about-text">拾音手机版 v1.0 · 纯静态、无账号、不上传数据</small></div>
     <span class="board-count">PWA</span>
   </div>
-  <p class="settings-note">免费/独立音乐来自 Audius 与 Radio Browser，可离线保存；版权歌曲只提供 Apple Music 官方 30 秒试听，不可下载。单文件本地打开时受浏览器限制，版权试听不可用；托管成 PWA 后可用。版权归各音乐人所有，所有收藏与下载只存在这台手机。</p>
+  <p class="settings-note">免费/独立音乐来自 Audius 与 Radio Browser，可离线保存；版权歌曲只提供 Apple Music 官方 30 秒试听，不可下载。下载保存在**当前网址的浏览器存储**里；换网址、换浏览器、无痕模式或清理浏览器数据后会看不到。需要手机里的文件副本，在「本地已存」点右侧导出按钮。单文件本地打开时版权试听不可用，托管成 PWA 后可用。</p>
 </section>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<input type="file" id="local-file-input" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac,.webm,.weba,.mp4,.m4b,.aiff,.aif" multiple hidden>
+<input type="file" id="local-dir-input" webkitdirectory multiple hidden>
 <audio id="audio" preload="metadata"></audio>
 <script src="seed.js"></script>
 <script src="app.js" defer></script>
