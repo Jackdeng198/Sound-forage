@@ -19,8 +19,8 @@ window.addEventListener('beforeinstallprompt', function (e) {
 });
 </script>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600;900&display=swap" rel="stylesheet">
@@ -144,6 +144,7 @@ window.addEventListener('beforeinstallprompt', function (e) {
     <p class="sheet-kicker" id="sheet-kicker">READY</p>
     <h3 id="sheet-title">还没有开始播放</h3>
     <p id="sheet-artist">挑一首喜欢的，让它转起来</p>
+    <p class="sheet-album" id="sheet-album"></p>
   </div>
   <div class="sheet-progress">
     <span id="sheet-cur">0:00</span>
@@ -160,6 +161,10 @@ window.addEventListener('beforeinstallprompt', function (e) {
   <div class="sheet-actions">
     <button class="btn btn-ghost" data-act="fav-current"><svg><use href="#i-heart"/></svg><span id="sheet-fav">收藏</span></button>
     <button class="btn btn-solid" data-act="save-current"><svg><use href="#i-down"/></svg><span id="sheet-save">存到手机</span></button>
+  </div>
+  <div class="lyrics-box">
+    <div class="lyrics-head"><span>歌词</span><small id="lyrics-source">LRCLIB</small></div>
+    <div class="lyrics" id="lyrics">播放后自动加载</div>
   </div>
   <p class="sheet-license" id="sheet-license"></p>
 </section>
@@ -179,6 +184,10 @@ window.addEventListener('beforeinstallprompt', function (e) {
     <button class="switch" id="auto-switch" role="switch" aria-checked="true" aria-label="自动采集"><i></i></button>
   </div>
   <div class="settings-row">
+    <div><strong>采集后自动播放</strong><small>按当前筛选从第一首开始；播不了自动下一首</small></div>
+    <button class="switch" id="autoplay-switch" role="switch" aria-checked="true" aria-label="采集后自动播放"><i></i></button>
+  </div>
+  <div class="settings-row">
     <div><strong>离线存储</strong><small id="storage-text">已存 0 首 · 0 MB</small></div>
     <button class="btn btn-ghost" id="persist-btn">申请持久存储</button>
   </div>
@@ -187,6 +196,18 @@ window.addEventListener('beforeinstallprompt', function (e) {
     <span class="board-count">本机</span>
   </div>
   <p class="settings-warn" id="storage-warn" hidden></p>
+  <div class="settings-row">
+    <div><strong>备份到手机</strong><small>导出收藏/已存清单 + 音频文件到下载目录</small></div>
+    <button class="btn btn-ghost" id="backup-export">导出</button>
+  </div>
+  <div class="settings-row">
+    <div><strong>从备份恢复</strong><small>选择 backup.json 和音频文件，可一起多选</small></div>
+    <button class="btn btn-ghost" id="backup-import">选择文件</button>
+  </div>
+  <div class="settings-row">
+    <div><strong>保存时导出音频</strong><small>每次存到手机时同时写一份到下载目录</small></div>
+    <button class="switch" id="export-switch" role="switch" aria-checked="true" aria-label="保存时导出音频"><i></i></button>
+  </div>
   <div class="settings-row">
     <div><strong>清空离线音频</strong><small>只删已下载的文件，保留曲库与收藏</small></div>
     <button class="btn btn-ghost danger" id="clear-saved">清空</button>
@@ -213,6 +234,7 @@ window.addEventListener('beforeinstallprompt', function (e) {
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <input type="file" id="local-file-input" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac,.webm,.weba,.mp4,.m4b,.aiff,.aif" multiple hidden>
 <input type="file" id="local-dir-input" webkitdirectory multiple hidden>
+<input type="file" id="backup-input" accept=".json,application/json,audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple hidden>
 <audio id="audio" preload="metadata"></audio>
 <script src="seed.js"></script>
 <script src="app.js" defer></script>

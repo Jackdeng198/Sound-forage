@@ -265,6 +265,16 @@
     loading: false,
     req: 0,
     collection: { running: false, last: null, cursor: 0, auto: true },
+    autoPlay: true,
+    autoPending: true,
+    autoSelected: false,
+    autoSkip: 0,
+    exportOnSave: true,
+    backupBusy: false,
+    lyricsFor: '',
+    lyricsLines: null,
+    lyricsAbort: null,
+    lyricsActive: -1,
     installEvent: null,
     persisted: false,
     estimate: null,
@@ -328,7 +338,13 @@
     S.collection.last = await metaGet('lastCollect');
     S.collection.cursor = (await metaGet('recipeCursor')) || 0;
     S.collection.auto = (await metaGet('autoCollect')) !== false;
+    S.autoPlay = (await metaGet('autoPlay')) !== false;
+    S.exportOnSave = (await metaGet('exportOnSave')) !== false;
     $('#auto-switch').setAttribute('aria-checked', String(S.collection.auto));
+    const ap = $('#autoplay-switch');
+    if (ap) ap.setAttribute('aria-checked', String(S.autoPlay));
+    const es = $('#export-switch');
+    if (es) es.setAttribute('aria-checked', String(S.exportOnSave));
   }
 
   function registerSW() {
@@ -370,17 +386,12 @@
       }
       sessionStorage.setItem(guard, '1');
       localStorage.setItem('sf-build', remote);
-      toast('发现新版本，正在自动更新…');
+      toast('发现新版本，正在刷新…');
+      // 只更新 Service Worker，不再注销 SW / 清空 CacheStorage，避免影响已安装应用的存储
       try {
         if ('serviceWorker' in navigator) {
-          const regs = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(regs.map((r) => r.unregister()));
-        }
-      } catch (e) { /* ignore */ }
-      try {
-        if (window.caches) {
-          const keys = await caches.keys();
-          await Promise.all(keys.map((k) => caches.delete(k)));
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) await reg.update();
         }
       } catch (e) { /* ignore */ }
       setTimeout(() => location.reload(), 600);
@@ -497,6 +508,7 @@
       S.collection.last = Date.now();
       await metaSet('lastCollect', S.collection.last);
       renderStats();
+      S.autoPending = true;
       if (S.view === 'discover') await loadDiscover(false);
       if (added) toast('采集完成 · 新增 ' + added + ' 首');
       else if (!silent) toast('这次没有新曲目，换个筛选试试', 'warn');
@@ -548,6 +560,17 @@
     S.loading = false;
     renderCollection();
     render();
+    const shouldAuto = S.autoPlay && (S.autoPending || !S.current);
+    S.autoPending = false;
+    if (shouldAuto) setTimeout(() => autoPlayFirst(true), 250);
+  }
+  function autoPlayFirst(force) {
+    if (!S.autoPlay || S.view !== 'discover') return;
+    if (S.current && !force) return;
+    const first = S.items.find((t) => t && t.uid && t.kind !== 'station');
+    if (!first) return;
+    S.autoSkip = 0;
+    playTrack(first, S.items, true);
   }
 
   async function loadRadio() {
@@ -999,6 +1022,96 @@
     }).join('');
   }
 
+  async function loadLyrics(t) {
+    S.lyricsFor = t.uid;
+    S.lyricsLines = null;
+    S.lyricsActive = -1;
+    if (S.lyricsAbort) { try { S.lyricsAbort.abort(); } catch (e) { /* ignore */ } }
+    const box = $('#lyrics');
+    const src = $('#lyrics-source');
+    if (!box) return;
+    if (src) src.textContent = 'LRCLIB';
+    if (t.kind === 'station') { box.innerHTML = '<p class="none">电台直播没有歌词</p>'; return; }
+    if (t.source === 'local') { box.innerHTML = '<p class="none">本地文件暂无歌词</p>'; return; }
+    box.innerHTML = '<p class="none">正在加载歌词…</p>';
+    try {
+      const cached = localStorage.getItem('lyr:' + t.uid);
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (data && data.forUid === t.uid) { renderLyrics(data); return; }
+      }
+    } catch (e) { /* ignore */ }
+    const ac = new AbortController();
+    S.lyricsAbort = ac;
+    const q = new URLSearchParams({ artist_name: t.artist || '', track_name: t.title || '' });
+    if (t.duration) q.set('duration', String(Math.round(t.duration)));
+    try {
+      let data = null;
+      const res = await fetch('https://lrclib.net/api/get?' + q, { signal: ac.signal });
+      if (res.ok) data = await res.json();
+      if (!data || (!data.syncedLyrics && !data.plainLyrics)) {
+        const s = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent((t.artist || '') + ' ' + (t.title || '')), { signal: ac.signal });
+        if (s.ok) {
+          const arr = await s.json();
+          data = (arr || []).find((x) => x && (x.syncedLyrics || x.plainLyrics)) || null;
+        }
+      }
+      if (S.lyricsFor !== t.uid) return;
+      if (data && (data.syncedLyrics || data.plainLyrics)) {
+        const payload = { forUid: t.uid, synced: data.syncedLyrics || '', plain: data.plainLyrics || '', instrumental: !!data.instrumental };
+        try { localStorage.setItem('lyr:' + t.uid, JSON.stringify(payload)); } catch (e) { /* ignore */ }
+        renderLyrics(payload);
+      } else {
+        renderLyrics({ forUid: t.uid, none: true, instrumental: !!(data && data.instrumental) });
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      if (S.lyricsFor === t.uid) renderLyrics({ forUid: t.uid, none: true });
+    }
+  }
+  function renderLyrics(payload) {
+    const box = $('#lyrics');
+    if (!box) return;
+    if (payload.instrumental) { box.innerHTML = '<p class="none">纯音乐 · 暂无歌词</p>'; return; }
+    if (payload.none) { box.innerHTML = '<p class="none">暂无歌词</p>'; return; }
+    if (payload.synced) {
+      const lines = [];
+      for (const raw of String(payload.synced).split(/\r?\n/)) {
+        const m = raw.match(/^\[(\d{1,2}):(\d{2}(?:\.\d{1,3})?)\](.*)$/);
+        if (!m) continue;
+        const text = m[3].trim();
+        if (text) lines.push({ time: Number(m[1]) * 60 + Number(m[2]), text });
+      }
+      if (lines.length) {
+        S.lyricsLines = lines;
+        S.lyricsActive = -1;
+        box.innerHTML = lines.map((l, i) => '<p data-t="' + l.time + '" data-i="' + i + '">' + esc(l.text) + '</p>').join('');
+        return;
+      }
+    }
+    if (payload.plain) {
+      S.lyricsLines = null;
+      box.innerHTML = String(payload.plain).split(/\r?\n/).map((x) => x.trim() ? '<p>' + esc(x.trim()) + '</p>' : '<p>&nbsp;</p>').join('');
+      return;
+    }
+    box.innerHTML = '<p class="none">暂无歌词</p>';
+  }
+  function updateLyricsAt(time) {
+    if (!S.lyricsLines || !S.lyricsLines.length) return;
+    let idx = -1;
+    for (let i = 0; i < S.lyricsLines.length; i++) {
+      if (S.lyricsLines[i].time <= time + 0.25) idx = i;
+      else break;
+    }
+    if (idx === S.lyricsActive) return;
+    S.lyricsActive = idx;
+    const box = $('#lyrics');
+    if (!box) return;
+    const nodes = box.querySelectorAll('p[data-i]');
+    nodes.forEach((n, i) => n.classList.toggle('is-on', i === idx));
+    if (idx >= 0 && nodes[idx]) nodes[idx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
   function updateDock() {
     const t = S.current;
     if (!t) return;
@@ -1017,6 +1130,9 @@
     $('#sheet-play-icon use').setAttribute('href', playing ? '#i-pause' : '#i-play');
     $('#sheet-title').textContent = t.title;
     $('#sheet-artist').textContent = t.kind === 'station' ? (t.country || '直播电台') : t.artist;
+    const albumLine = [t.album, t.genre].filter(Boolean).join(' · ');
+    $('#sheet-album').textContent = albumLine;
+    if (S.lyricsFor !== t.uid) loadLyrics(t);
     $('#sheet-kicker').textContent = S.saved.has(t.uid) ? 'OFFLINE · 已离线' : t.kind === 'station' ? 'LIVE RADIO' : t.source === 'local' ? 'LOCAL · 手机文件' : t.preview ? 'APPLE MUSIC · 30 秒试听' : 'AUDIUS';
     const fav = S.favorites.has(t.uid);
     $('#sheet-fav').textContent = fav ? '已收藏' : '收藏';
@@ -1048,6 +1164,7 @@
     $('#sheet-cur').textContent = Number.isFinite(d) ? fmtTime(cur) : '0:00';
     $('#sheet-dur').textContent = live ? 'LIVE' : Number.isFinite(d) ? fmtTime(d) : '0:00';
     if (!seeking) $('#sheet-range').value = String(Math.round(pct * 1000));
+    updateLyricsAt(cur);
   }
 
   function setView(view) {
@@ -1069,9 +1186,10 @@
   }
 
   /* ------------------------------ 播放 ------------------------------ */
-  async function playTrack(t, list) {
+  async function playTrack(t, list, auto) {
     if (!t) return;
     if (S.current && S.current.uid === t.uid) { toggle(); return; }
+    S.autoSelected = !!auto;
     S.current = t;
     if (!S.live.has(t.uid) && !S.tracks.find((x) => x.uid === t.uid)) S.live.set(t.uid, t);
     const queue = (list || S.items).filter((x) => x && x.uid);
@@ -1092,10 +1210,20 @@
         if (S.blobUrls.has(t.uid)) src = S.blobUrls.get(t.uid);
       } catch (e) { /* 回退在线 */ }
     }
-    if (!src) { toast('无法播放这首', 'err'); return; }
+    if (!src) {
+      if (S.autoSelected && S.autoSkip < 8) { S.autoSkip++; setTimeout(() => next(true), 200); }
+      else toast('无法播放这首', 'err');
+      return;
+    }
     audio.src = src;
     const p = audio.play();
-    if (p && p.catch) p.catch(() => toast('音源连接失败，试试下一首', 'err'));
+    if (p && p.catch) p.catch((err) => {
+      if (err && err.name === 'NotAllowedError') {
+        toast('浏览器阻止自动播放，点播放键开始', 'warn');
+        S.autoSelected = false;
+      }
+      // 其他错误交给 audio.error 处理，自动跳下一首
+    });
     updateDock();
     updateMediaSession(t);
     markPlaying();
@@ -1113,7 +1241,7 @@
     if (auto && S.repeat === 'one') { audio.currentTime = 0; audio.play(); return; }
     let idx = S.qi + 1;
     if (idx >= S.queue.length) {
-      if (S.repeat === 'all') idx = 0;
+      if (S.repeat === 'all' || (auto && S.autoSelected)) idx = 0;
       else if (auto) { audio.pause(); return; }
       else idx = 0;
     }
@@ -1185,6 +1313,9 @@
         S.tracks.push(own);
       }
       S.saved.set(uid, entry);
+      if (S.exportOnSave) {
+        try { downloadBlob(blob, 'sf-' + safeUid(uid) + extFromMime(mime)); } catch (e) { /* 下载被拦截就保留离线存储 */ }
+      }
       try { if (navigator.storage && navigator.storage.persist) S.persisted = await navigator.storage.persist(); } catch (e) {}
       toast('已存到手机 · ' + fmtBytes(bytes));
       if (!S.persisted && !S.warnedPersist) {
@@ -1258,6 +1389,108 @@
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     toast('已导出到手机的下载目录');
+  }
+  function safeUid(uid) { return String(uid).replace(/[^a-zA-Z0-9_-]+/g, '_'); }
+  function extFromMime(mime) {
+    const m = String(mime || '');
+    if (/mpeg|mp3/i.test(m)) return '.mp3';
+    if (/mp4|m4a|aac/i.test(m)) return '.m4a';
+    if (/ogg/i.test(m)) return '.ogg';
+    if (/opus/i.test(m)) return '.opus';
+    if (/wav/i.test(m)) return '.wav';
+    if (/flac/i.test(m)) return '.flac';
+    if (/webm/i.test(m)) return '.webm';
+    return '.audio';
+  }
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+  function favoriteTrackList() {
+    return [...S.favorites].map((uid) => S.tracks.find((x) => x.uid === uid) || S.live.get(uid)).filter(Boolean).map(stripTrack);
+  }
+  async function exportBackup() {
+    if (S.backupBusy) return;
+    S.backupBusy = true;
+    try {
+      const items = [];
+      for (const [uid, entry] of S.saved) {
+        let rec = null;
+        try { rec = await getOne('blobs', uid); } catch (e) { /* ignore */ }
+        if (!rec || !rec.blob) continue;
+        items.push({ uid, size: entry.size, mime: entry.mime, savedAt: entry.savedAt, track: entry.track, file: 'sf-' + safeUid(uid) + extFromMime(rec.mime || entry.mime), blob: rec.blob });
+      }
+      const manifest = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        favorites: [...S.favorites],
+        favoriteTracks: favoriteTrackList(),
+        saved: items.map(({ blob, ...rest }) => rest),
+      };
+      downloadBlob(new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }), 'sound-forage-backup.json');
+      for (const item of items) {
+        downloadBlob(item.blob, item.file);
+        await new Promise((r) => setTimeout(r, 650));
+      }
+      toast('已导出清单' + (items.length ? ' + ' + items.length + ' 个音频' : '') + '；如浏览器询问请允许多个下载');
+    } catch (e) {
+      toast('导出失败：' + e.message, 'err');
+    } finally {
+      S.backupBusy = false;
+    }
+  }
+  async function importBackup(files) {
+    const list = [...(files || [])];
+    const jsonFile = list.find((f) => /\.json$/i.test(f.name) || f.type === 'application/json');
+    const audioFiles = list.filter((f) => (f.type && f.type.startsWith('audio/')) || LOCAL_AUDIO_RE.test(f.name));
+    let manifest = null;
+    if (jsonFile) {
+      try { manifest = JSON.parse(await jsonFile.text()); } catch (e) { toast('备份清单无法读取', 'err'); return; }
+    }
+    if (manifest && Array.isArray(manifest.saved)) {
+      const byName = new Map(audioFiles.map((f) => [f.name, f]));
+      let restored = 0;
+      for (const s of manifest.saved) {
+        const f = byName.get(s.file);
+        if (!f) continue;
+        const mime = s.mime || f.type || 'audio/mpeg';
+        try {
+          await putOne('blobs', { uid: s.uid, blob: f, mime: mime, size: f.size });
+          const entry = { uid: s.uid, size: f.size, mime: mime, savedAt: s.savedAt || new Date().toISOString(), track: s.track };
+          await putOne('saved', entry);
+          S.saved.set(s.uid, entry);
+          restored++;
+        } catch (e) { /* skip */ }
+      }
+      for (const uid of manifest.favorites || []) {
+        S.favorites.add(uid);
+        try { await putOne('favorites', { uid, at: Date.now() }); } catch (e) { /* ignore */ }
+      }
+      for (const t of manifest.favoriteTracks || []) {
+        if (!t || !t.uid) continue;
+        if (!S.tracks.find((x) => x.uid === t.uid)) {
+          S.tracks.push(t);
+          try { await putOne('tracks', t); } catch (e) { /* ignore */ }
+        }
+      }
+      renderStats();
+      if (S.view === 'saved') renderSavedList();
+      else if (S.view === 'favorites') { S.items = favTracks(); renderTrackList(); }
+      toast('恢复完成 · ' + restored + ' 首音频 · ' + (manifest.favorites || []).length + ' 个收藏');
+      return;
+    }
+    if (audioFiles.length) {
+      addLocalFiles(audioFiles);
+      toast('已把 ' + audioFiles.length + ' 个音频加入本地列表');
+      return;
+    }
+    toast('没有可恢复的文件', 'warn');
   }
   async function deleteSaved(uid) {
     if (!confirm('从手机删除这首离线曲目？')) return;
@@ -1430,6 +1663,7 @@
         $('#search').value = q.dataset.q;
         S.q = q.dataset.q;
         S.limit = 80;
+        S.autoPending = true;
         updateSearchUI();
         if (S.view !== 'discover') setView('discover'); else loadDiscover(true);
         return;
@@ -1487,8 +1721,24 @@
     const installRow = $('#install-row');
     if (installRow) installRow.addEventListener('click', (e) => { if (e.target.closest('button')) return; install(); });
     $('#persist-btn').addEventListener('click', requestPersist);
+    $('#autoplay-switch').addEventListener('click', async () => {
+      S.autoPlay = !S.autoPlay;
+      $('#autoplay-switch').setAttribute('aria-checked', String(S.autoPlay));
+      await metaSet('autoPlay', S.autoPlay);
+      toast(S.autoPlay ? '采集后自动播放已开启' : '采集后自动播放已关闭');
+      if (S.autoPlay) { S.autoPending = true; autoPlayFirst(true); }
+    });
     $('#local-file-input').addEventListener('change', (e) => { addLocalFiles(e.target.files); e.target.value = ''; });
     $('#local-dir-input').addEventListener('change', (e) => { addLocalFiles(e.target.files); e.target.value = ''; });
+    $('#backup-export').addEventListener('click', exportBackup);
+    $('#backup-import').addEventListener('click', () => $('#backup-input').click());
+    $('#backup-input').addEventListener('change', (e) => { importBackup(e.target.files); e.target.value = ''; });
+    $('#export-switch').addEventListener('click', async () => {
+      S.exportOnSave = !S.exportOnSave;
+      $('#export-switch').setAttribute('aria-checked', String(S.exportOnSave));
+      await metaSet('exportOnSave', S.exportOnSave);
+      toast(S.exportOnSave ? '保存时会同时导出音频' : '保存时只写入离线存储');
+    });
     $('#check-update').addEventListener('click', () => checkForUpdates(true));
     $('#clear-saved').addEventListener('click', clearSaved);
     $('#auto-switch').addEventListener('click', async () => {
@@ -1502,6 +1752,7 @@
     const doSearch = debounce(() => {
       S.q = search.value.trim();
       S.limit = 80;
+      S.autoPending = true;
       updateSearchUI();
       if (S.view !== 'discover') setView('discover'); else loadDiscover(true);
     }, 420);
@@ -1510,12 +1761,14 @@
       if (e.key === 'Enter') {
         e.preventDefault();
         S.q = search.value.trim();
+        S.autoPending = true;
         if (S.view !== 'discover') setView('discover'); else loadDiscover(true);
       }
     });
     $('#search-clear').addEventListener('click', () => {
       search.value = '';
       S.q = '';
+      S.autoPending = true;
       updateSearchUI();
       if (S.view !== 'discover') setView('discover'); else loadDiscover(true);
     });
@@ -1539,13 +1792,26 @@
     audio.addEventListener('timeupdate', () => { if (!seeking) updateProgress(); });
     audio.addEventListener('loadedmetadata', updateProgress);
     audio.addEventListener('waiting', () => { $('.play-btn').classList.add('is-loading'); });
-    audio.addEventListener('playing', () => { $$('.play-btn').forEach((b) => b.classList.remove('is-loading')); });
+    audio.addEventListener('playing', () => {
+      S.autoSkip = 0;
+      $$('.play-btn').forEach((b) => b.classList.remove('is-loading'));
+    });
     audio.addEventListener('error', () => {
       if (!S.current) return;
       $$('.play-btn').forEach((b) => b.classList.remove('is-loading'));
+      if (S.autoSelected && S.autoSkip < 8) {
+        S.autoSkip++;
+        setTimeout(() => next(true), 350);
+        return;
+      }
+      S.autoSelected = false;
       toast('《' + S.current.title.slice(0, 16) + '》暂时播不了', 'err');
     });
 
+    // 浏览器阻止自动播放时，用户第一次触摸页面就接着播当前自动选中的曲目
+    document.addEventListener('pointerdown', () => {
+      if (S.autoSelected && S.current && audio.paused) audio.play().catch(() => {});
+    }, { once: true });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheets(); });
     window.addEventListener('hashchange', () => {
       const h = (location.hash || '').replace('#', '');
@@ -1557,6 +1823,7 @@
     $('#searchbar').classList.toggle('has-value', !!$('#search').value);
   }
   function afterFilterChange() {
+    S.autoPending = true;
     if (S.view === 'discover') loadDiscover(true);
     else if (S.view === 'radio') loadRadio();
   }
